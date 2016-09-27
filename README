@@ -13,7 +13,7 @@ In this assignment you will be implementing five concurrency control schemes:
   * two versions of locking schemes, both of which are considerably simpler than standard two-phase locking
   * a version of OCC very similar to the serial-validation version described in the OCC paper you read for class (http://www.seas.upenn.edu/~zives/cis650/papers/opt-cc.pdf)
   * a version of OCC somewhat similar to the parallel-validation version described in the OCC paper
-  * a version of MVCC timestamp ordering scheme based on the paper we read for class on this topic.
+  * a version of MVCC timestamp ordering that is a simplied version of the PostgreSQL scheme we studied in class.
  
 
 ---------
@@ -189,9 +189,9 @@ Pseudocode to implement in RunOCCParallelScheduler:
 Part 4: Multiversion Timestamp Ordering Concurrency Control.  20 points
 --------------------------------------------------------------------------------
 For MVCC, you will have to implement the 'TxnProcessor::RunMVCCScheduler' method
- based on the pseudocode below. The pseudocode implements the MVCC timestamp ordering protocol from the paper that we read for class. 
+ based on the pseudocode below. The pseudocode implements a simplied version of MVCC relative to the material we presented in class. 
 
-Although we give you a version of pseudocode, if you want, you can write your own pseudocode and argue why it's better than the code presented here (see analysis question 5). 
+Although we give you a version of pseudocode, if you want, you can write your own pseudocode and argue why it's better than the code presented here (see analysis question 6). 
 
 In addition you will have to implement the MVCCStorage::Read, MVCCStorage::Write, MVCCStorage::CheckWrite.
 
@@ -204,7 +204,7 @@ Pseudocode for the algorithm to implement (in the RunMVCCScheduler method):
 
   In the execution thread:
     
-    Read all necessary data for this transaction from storage (Note that you should lock the key before each read)
+    Read all necessary data for this transaction from storage (Note that unlike the version of MVCC from class, you should lock the key before each read)
     Execute the transaction logic (i.e. call Run() on the transaction)
     Acquire all locks for keys in the write_set_
     Call MVCCStorage::CheckWrite method to check all keys in the write_set_
@@ -255,6 +255,7 @@ For the read-write tests, MVCC performs worse than OCC and Locking. Why? It even
 
 If you wrote your own version, please explain why it's better than the ones presented here.
 
+7) Why did our pseudocode request read locks before each read? In particular, what would happen if you didn't acquire these read locks? How long do these locks have to be held?
 
 --------------------------------------
 A few notes on the implementation
@@ -274,7 +275,7 @@ What To Turn In
   * analysis.txt --- Your responses to the analysis questions above
   * files_changed.txt----List of files you changed and what did you change
   * hw2.tar.gz-----Entire codebase that contains all your code
-  * partners.txt --- Listing the other person that you worked with (undergraduates only).
+  * partners.txt --- Listing the other person that you worked with.
 
 How to Submit
 
