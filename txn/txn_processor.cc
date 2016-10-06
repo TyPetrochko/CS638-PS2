@@ -287,7 +287,7 @@ void TxnProcessor::MVCCExecuteTxn(Txn* txn) {
        it != txn->readset_.end(); ++it) {
 		
 		// Lock key
-		storage->Lock(*it);
+		storage_->Lock(*it);
 
     // Save each read result iff record exists in storage.
     Value result;
@@ -295,8 +295,7 @@ void TxnProcessor::MVCCExecuteTxn(Txn* txn) {
       txn->reads_[*it] = result;
 		
 		// Unlock key
-		storage->Unlock(*it);
-
+		storage_->Unlock(*it);
   }
   
 	// Also read everything in from writeset.
@@ -304,7 +303,7 @@ void TxnProcessor::MVCCExecuteTxn(Txn* txn) {
        it != txn->writeset_.end(); ++it) {
 		
 		// Lock key
-		storage->Lock(*it);
+		storage_->Lock(*it);
     
 		// Save each read result iff record exists in storage.
     Value result;
@@ -318,17 +317,21 @@ void TxnProcessor::MVCCExecuteTxn(Txn* txn) {
 	// Check if all keys in write set "pass"
   for (set<Key>::iterator it = txn->writeset_.begin();
        it != txn->writeset_.end(); ++it) {
-		if(!MVCCStorage::CheckWrite(*it, txn->unique_id_)){
+		if(!MVCCStorage::CheckWrite(*it, txn->unique_id_))
 			MVCCAbortTransaction(txn);
-		}
+		else
+			storage_->Write(it->first, it->second, txn->unique_id_);
 	}
+	
+	// Return result to client.
+	txn_results_.Push(txn);
 }
 
 void TxnProcessor::MVCCAbortTransaction(Txn* txn) {
 	// Release all write set locks
   for (set<Key>::iterator it = txn->writeset_.begin();
        it != txn->writeset_.end(); ++it) {
-		storage->Unlock(*it);
+		storage_->Unlock(*it);
 	}
 
 	// Clean up transaction
