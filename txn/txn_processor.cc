@@ -281,6 +281,69 @@ void TxnProcessor::RunOCCParallelScheduler() {
   RunSerialScheduler();
 }
 
+void TxnProcessor::MVCCExecuteTxn(Txn* txn) {
+	// read all the data from storage, locking keys individually
+  for (set<Key>::iterator it = txn->readset_.begin();
+       it != txn->readset_.end(); ++it) {
+		
+		// Lock key
+		storage->Lock(*it);
+
+    // Save each read result iff record exists in storage.
+    Value result;
+    if (storage_->Read(*it, &result))
+      txn->reads_[*it] = result;
+		
+		// Unlock key
+		storage->Unlock(*it);
+
+  }
+  
+	// Also read everything in from writeset.
+  for (set<Key>::iterator it = txn->writeset_.begin();
+       it != txn->writeset_.end(); ++it) {
+		
+		// Lock key
+		storage->Lock(*it);
+    
+		// Save each read result iff record exists in storage.
+    Value result;
+    if (storage_->Read(*it, &result))
+      txn->reads_[*it] = result;
+  }
+
+  // Execute txn's program logic.
+  txn->Run();
+
+	// Check if all keys in write set "pass"
+  for (set<Key>::iterator it = txn->writeset_.begin();
+       it != txn->writeset_.end(); ++it) {
+		if(!MVCCStorage::CheckWrite(*it, txn->unique_id_)){
+			MVCCAbortTransaction(txn);
+		}
+	}
+}
+
+void TxnProcessor::MVCCAbortTransaction(Txn* txn) {
+	// Release all write set locks
+  for (set<Key>::iterator it = txn->writeset_.begin();
+       it != txn->writeset_.end(); ++it) {
+		storage->Unlock(*it);
+	}
+
+	// Clean up transaction
+	txn->reads_.clear();
+	txn->writes_.clear();
+	txn->status_ = INCOMPLETE;
+
+	// Restart transaction
+	mutex_.Lock();
+	txn->unique_id_ = next_unique_id_;
+	next_unique_id_++;
+	txn_requests_.Push(txn);
+	mutex_.Unlock(); 
+}
+
 void TxnProcessor::RunMVCCScheduler() {
   // CPSC 638:
   //
@@ -288,9 +351,15 @@ void TxnProcessor::RunMVCCScheduler() {
   
   // Hint:Pop a txn from txn_requests_, and pass it to a thread to execute. 
   // Note that you may need to create another execute method, like TxnProcessor::MVCCExecuteTxn. 
-  //
-  // [For now, run serial scheduler in order to make it through the test
-  // suite]
-  RunSerialScheduler();
+  
+	while (tp_.Active()) {
+    if (txn_requests_.Pop(&txn)) {
+			// Start txn running in its own thread.
+			tp_.RunTask(new Method<TxnProcessor, void, Txn*>(
+						this,
+						&TxnProcessor::MVCCExecuteTxn,
+						txn));
+		}
+	}
 }
 
