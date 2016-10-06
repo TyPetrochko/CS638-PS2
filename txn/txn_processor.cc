@@ -315,9 +315,9 @@ void TxnProcessor::MVCCExecuteTxn(Txn* txn) {
   txn->Run();
 
 	// Check if all keys in write set "pass"
-  for (set<Key>::iterator it = txn->writeset_.begin();
-       it != txn->writeset_.end(); ++it) {
-		if(!MVCCStorage::CheckWrite(*it, txn->unique_id_))
+  for (map<Key, Value>::iterator it = txn->writes_.begin();
+       it != txn->writes_.end(); ++it) {
+		if(!storage_->CheckWrite(it->first, txn->unique_id_))
 			MVCCAbortTransaction(txn);
 		else
 			storage_->Write(it->first, it->second, txn->unique_id_);
@@ -354,7 +354,7 @@ void TxnProcessor::RunMVCCScheduler() {
   
   // Hint:Pop a txn from txn_requests_, and pass it to a thread to execute. 
   // Note that you may need to create another execute method, like TxnProcessor::MVCCExecuteTxn. 
-  
+  Txn* txn;
 	while (tp_.Active()) {
     if (txn_requests_.Pop(&txn)) {
 			// Start txn running in its own thread.

@@ -92,6 +92,9 @@ class TxnProcessor {
   //
   // Requires: txn->Status() is COMPLETED_C.
   void ApplyWrites(Txn* txn);
+
+	// Abort an MVCC transaction, do cleanup, and restart
+	void MVCCAbortTransaction(Txn* txn);
   
   // The following functions are for MVCC
   void MVCCExecuteTxn(Txn* txn);
