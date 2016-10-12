@@ -291,7 +291,7 @@ void TxnProcessor::MVCCExecuteTxn(Txn* txn) {
 
     // Save each read result iff record exists in storage.
     Value result;
-    if (storage_->Read(*it, &result))
+    if (storage_->Read(*it, &result, txn->unique_id_))
       txn->reads_[*it] = result;
 		
 		// Unlock key
@@ -307,24 +307,51 @@ void TxnProcessor::MVCCExecuteTxn(Txn* txn) {
     
 		// Save each read result iff record exists in storage.
     Value result;
-    if (storage_->Read(*it, &result))
+    if (storage_->Read(*it, &result, txn->unique_id_))
       txn->reads_[*it] = result;
+		
+		// Unlock key
+		storage_->Unlock(*it);
   }
 
   // Execute txn's program logic.
   txn->Run();
-
-	// Check if all keys in write set "pass"
-  for (map<Key, Value>::iterator it = txn->writes_.begin();
-       it != txn->writes_.end(); ++it) {
-		if(!storage_->CheckWrite(it->first, txn->unique_id_))
-			MVCCAbortTransaction(txn);
-		else
-			storage_->Write(it->first, it->second, txn->unique_id_);
+	
+	// Lock the whole write-set!
+  for (set<Key>::iterator it = txn->writeset_.begin();
+       it != txn->writeset_.end(); ++it) {
+		// Lock key
+		storage_->Lock(*it);
 	}
 	
+	// Check if all keys in write set "pass"
+	bool failed = false;
+  for (map<Key, Value>::iterator it = txn->writes_.begin();
+       it != txn->writes_.end(); ++it) {
+		
+		if(!storage_->CheckWrite(it->first, txn->unique_id_)){
+			failed = true;
+			break;
+		}
+	}
+
+	if(failed)
+		MVCCAbortTransaction(txn);
+	else{
+		// Apply all the writes
+		for (map<Key, Value>::iterator it = txn->writes_.begin();
+				 it != txn->writes_.end(); ++it) {
+			storage_->Write(it->first, it->second, txn->unique_id_);
+		}
+	
+		// Release all write set locks
+		for (set<Key>::iterator it = txn->writeset_.begin();
+				 it != txn->writeset_.end(); ++it) {
+			storage_->Unlock(*it);
+		}
 	// Return result to client.
 	txn_results_.Push(txn);
+	}
 }
 
 void TxnProcessor::MVCCAbortTransaction(Txn* txn) {
