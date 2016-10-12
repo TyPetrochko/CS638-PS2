@@ -150,29 +150,37 @@ void LockManagerB::Release(Txn* txn, const Key& key) {
 		if(i->txn_ == txn)
 			break;
 	}
+	
+	i = locks->erase(i);
 
-	// do we have to pass on the lock to anyone else?
+	// figure out if we have to pass the lock off to someone else
 	bool pass_lock;
-	if(i != locks->begin())
-		pass_lock = false; // we have to be first in line to give it up
-	else if(i->mode_ == EXCLUSIVE)
-		pass_lock = true; // if we're exclusive, someone else gets it now
-	else if(i->mode_ == SHARED && i + 1 == locks->end())
-		pass_lock = false; // if we're the last, no one else gets it
-	else if(i->mode_ == SHARED && (i + 1)->mode_ == EXCLUSIVE)
-		pass_lock = true; // if the next guy is an exclusive lock, he gets it
-	else
+	if(i == locks->end())
 		pass_lock = false;
+	else if(i == locks->begin() && i->mode_ == EXCLUSIVE)
+		pass_lock = true;
+	else if(i->mode_ == SHARED){
+		pass_lock = true;
+		// check if there's an exclusive lock between i and the beginning
+		deque<LockRequest>::iterator u;
+		for(u = locks->begin(); u != locks->end(); u++){
+			if(u == i)
+				break;
+			else if (u->mode_ == EXCLUSIVE){
+				pass_lock = false;
+				break;
+			}
+		}
+	}
 
-	locks->erase(i);
-
+	// I am no longer waiting on anything since I released...
 	txn_waits_.erase(txn);
 	if(!pass_lock)
 		return;
 
-	// turn over the lock to the next bunch!
-	bool exclusive = locks->size() > 0 && locks->front().mode_ == EXCLUSIVE;
-	for(i = locks->begin(); i != locks->end(); i++){
+	// turn over the lock to the next bunch if necessary!
+	bool exclusive = locks->size() > 0 && i->mode_ == EXCLUSIVE;
+	for(; i != locks->end(); i++){
 		if((i->mode_ == EXCLUSIVE && exclusive)){
 			// decrement and potentially move to queue
 			txn_waits_[i->txn_] --;
@@ -197,6 +205,7 @@ void LockManagerB::Release(Txn* txn, const Key& key) {
 }
 
 LockMode LockManagerB::Status(const Key& key, vector<Txn*>* owners) {
+	owners->clear();
 	if(lock_table_.count(key) == 0)
 		DIE("Tried to get status of a key that didn't exist: " << key);
 	
@@ -216,7 +225,6 @@ LockMode LockManagerB::Status(const Key& key, vector<Txn*>* owners) {
 	for(i = locks->begin(); i != locks->end(); i++){
 		if(i->mode_ == SHARED){
 			owners->push_back(i->txn_);
-			std::cout << "Adding " << i->txn_ << std::endl;
 		}
 		else
 			break;
